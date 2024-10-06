@@ -1,0 +1,4 @@
+playwright==1.35.0
+beautifulsoup4==4.12.2
+PyPDF2==3.0.1
+reportlab==3.6.12
