@@ -11,10 +11,12 @@ CVE Reference: https://github.com/py-pdf/pypdf/security/advisories/GHSA-xcvp-wgc
 import io
 import unittest
 import time
+import pytest
 from unittest.mock import patch
 from PyPDF2.generic._data_structures import ContentStream
 
 
+@pytest.mark.security
 class TestSecurityFixes(unittest.TestCase):
     """Test cases for security vulnerability fixes."""
     

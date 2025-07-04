@@ -16,25 +16,39 @@ tests/
 
 ## Running Tests
 
-### Using the Shell Script (Recommended)
-
-```bash
-# Run all tests
-./run_tests.sh
-
-# Run only security tests
-./run_tests.sh security
-
-# Run only PDF processing tests
-./run_tests.sh pdf
-```
-
-### Using Python Test Runner
+### Using pytest (Recommended)
 
 ```bash
 # Activate virtual environment
 source venv/bin/activate
 
+# Run all tests
+pytest
+
+# Run with verbose output
+pytest -v
+
+# Run only security tests
+pytest tests/test_security_fixes.py
+
+# Run only PDF processing tests  
+pytest tests/test_pdf_processing.py
+
+# Run tests with coverage
+pytest --cov=tests
+
+# Run tests matching a pattern
+pytest -k "security"
+pytest -k "vulnerability"
+
+# Run tests by marker
+pytest -m security        # Run security tests
+pytest -m integration     # Run integration tests
+```
+
+### Using Python Test Runner (Alternative)
+
+```bash
 # Run all tests
 python tests/test_runner.py
 

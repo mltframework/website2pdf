@@ -9,6 +9,7 @@ used in the website2pdf application.
 import unittest
 import tempfile
 import os
+import pytest
 from unittest.mock import patch, MagicMock
 from PyPDF2 import PdfReader, PdfWriter
 from PyPDF2.generic import DictionaryObject, NameObject, NumberObject, RectangleObject, ArrayObject
@@ -174,6 +175,7 @@ class TestPdfProcessing(unittest.TestCase):
                 os.unlink(tmp_file.name)
 
 
+@pytest.mark.integration
 class TestApplicationIntegration(unittest.TestCase):
     """Test cases for application integration aspects."""
     
