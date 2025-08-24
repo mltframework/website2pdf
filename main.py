@@ -3,6 +3,7 @@ import os
 import re
 import asyncio
 import argparse
+import time
 from urllib.parse import urljoin, urlparse
 from playwright.async_api import async_playwright
 from bs4 import BeautifulSoup
@@ -13,6 +14,7 @@ from PyPDF2.generic import (
     NameObject,
     ArrayObject,
     RectangleObject,
+    AnnotationBuilder,
 )
 from reportlab.pdfgen import canvas
 
@@ -64,6 +66,7 @@ async def crawl_and_save_pdf(
     try:
         # Navigate to the page
         await page.goto(url, wait_until="load")
+        await page.evaluate("document.body.style.zoom=0.8")
 
         # Get the page content
         content = await page.content()
@@ -114,10 +117,11 @@ async def crawl_and_save_pdf(
 
             # Skip links with text matching any of the excluded texts
             if any(
+                len(link_text) == 0 or
                 exclude_text.lower() in link_text.lower()
                 for exclude_text in exclude_texts
             ):
-                print(f"Skipping link: {link_text} ({next_url})")
+                # print(f"Skipping link: {link_text} ({next_url})")
                 continue
 
             # Check if the next URL is valid and belongs to the base domain
@@ -127,6 +131,7 @@ async def crawl_and_save_pdf(
                 parsed_next_url.netloc == parsed_base_url.netloc
                 and normalized_next_url not in visited
             ):
+                time.sleep(1)  # Sleep for a second to avoid being blocked
                 await crawl_and_save_pdf(
                     next_url,
                     visited,
@@ -148,22 +153,31 @@ async def crawl_and_save_pdf(
 
 
 def create_table_of_contents(toc_filename, pdf_info):
-    c = canvas.Canvas(toc_filename)
-    c.setTitle("Table of Contents")
+    PPI = 72  # Points per inch
+    page_size = (8.5 * PPI, 11 * PPI)
+    c = canvas.Canvas(toc_filename, page_size)
+    title = "Shotcut User Guide"
+    c.setTitle(title)
 
     c.setFont("Helvetica", 16)
-    c.drawString(200, 800, "Table of Contents")
+    c.drawCentredString(0.5 * page_size[0], 0.95 * page_size[1], title)
+    c.drawCentredString(0.5 * page_size[0], 0.92 * page_size[1], "Table of Contents")
     c.setFont("Helvetica", 12)
+    import datetime
+    current_date = datetime.datetime.now().strftime("(%B, %Y)")
+    c.drawRightString(0.95 * page_size[0], 0.92 * page_size[1], current_date)
 
-    y_position = 750
-    link_rects = []  # To store link positions for annotations
+    y_position = 0.87 * page_size[1]
+    link_rects = [[]]  # To store link positions for annotations
+    page_number = 0
 
     for i, entry in enumerate(pdf_info):
         # Shorten title if it's too long
         title = (
             entry["title"] if len(entry["title"]) <= 60 else entry["title"][:57] + "..."
         )
-        link_text = f"{i + 1}. {title}"
+        # link_text = f"{i + 1}. {title}"
+        link_text = title
 
         # Add entry to TOC
         c.drawString(50, y_position, link_text)
@@ -175,13 +189,15 @@ def create_table_of_contents(toc_filename, pdf_info):
         x2 = x1 + text_width
         y2 = y_position + 10
         link_rect = (x1, y1, x2, y2)
-        link_rects.append(link_rect)
+        link_rects[page_number].append(link_rect)
 
         y_position -= 20
         # Move to next page if space runs out
         if y_position < 50:
             c.showPage()
-            y_position = 750
+            y_position = 0.87 * page_size[1]
+            page_number += 1
+            link_rects.append([])  # Add a new list for the next page
 
     c.save()
     print(f"Table of Contents saved as {toc_filename}")
@@ -191,6 +207,7 @@ def create_table_of_contents(toc_filename, pdf_info):
 
 def combine_pdfs(output_filename, toc_filename, pdf_info):
     writer = PdfWriter()
+    total_pages = 0
 
     # Read the TOC PDF and add its pages
     toc_reader = PdfReader(toc_filename)
@@ -204,6 +221,7 @@ def combine_pdfs(output_filename, toc_filename, pdf_info):
         info["num_pages"] = num_pages
         info["start_page"] = total_pages  # Page numbering starts from 0
         total_pages += num_pages
+        print(f"Appending {num_pages} at {total_pages} from PDF {info['file_path']}")
         writer.append_pages_from_reader(pdf_reader)
 
     # Write the combined PDF without annotations first
@@ -222,38 +240,11 @@ def add_internal_links(output_filename, link_rects, pdf_info):
         writer.add_page(page)
 
     # Iterate over the links and add annotations
-    for rect, info in zip(link_rects, pdf_info):
-        x1, y1, x2, y2 = rect
-        dest_page_number = info["start_page"]
-
-        # Get the indirect reference to the target page
-        target_page_ref = writer.pages[dest_page_number].indirect_reference
-
-        # Create the GoTo action
-        action = DictionaryObject(
-            {
-                NameObject("/S"): NameObject("/GoTo"),
-                NameObject("/D"): ArrayObject([target_page_ref, NameObject("/Fit")]),
-            }
-        )
-
-        # Create link annotation
-        annotation = DictionaryObject()
-        annotation.update(
-            {
-                NameObject("/Type"): NameObject("/Annot"),
-                NameObject("/Subtype"): NameObject("/Link"),
-                NameObject("/Rect"): RectangleObject([x1, y1, x2, y2]),
-                NameObject("/Border"): ArrayObject(
-                    [NumberObject(0), NumberObject(0), NumberObject(0)]
-                ),
-                NameObject("/A"): action,
-                NameObject("/H"): NameObject("/I"),
-            }
-        )
-
-        # Add the annotation to the TOC page (page 0)
-        writer.add_annotation(page_number=0, annotation=annotation)
+    links_per_page = len(link_rects[0])
+    for page_number, link_rects in enumerate(link_rects):
+        for link_number, rect in enumerate(link_rects):
+            info = pdf_info[links_per_page * page_number + link_number]
+            writer.add_annotation(page_number, AnnotationBuilder.link(rect, target_page_index=info["start_page"]))
 
     # Save the updated PDF with annotations
     with open(output_filename, "wb") as f:
@@ -282,11 +273,12 @@ async def main(root_url, exclude_texts, max_depth):
         await browser.close()
 
     # Generate TOC and get link positions
+    pdf_info = pdf_info[1:]  # Skip the first entry (TOC itself)
     toc_filename = "toc.pdf"
     link_rects = create_table_of_contents(toc_filename, pdf_info)
 
     # Combine all PDFs
-    final_output = "final_combined_output.pdf"
+    final_output = "Shotcut User Guide.pdf"
     combine_pdfs(final_output, toc_filename, pdf_info)
 
     # Add internal links to TOC
