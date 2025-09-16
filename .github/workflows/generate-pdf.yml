@@ -38,13 +38,6 @@ jobs:
     - name: Run PDF generation script
       run: |
         python main.py https://forum.shotcut.org/pub/website2pdf -L 1 -e "Opt out"
-        
-    - name: Upload generated PDF as artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: PDF
-        path: Shotcut User Guide.pdf
-        retention-days: 30
 
     - name: Upload PDF to S3
       if: ${{ github.repository_owner == 'mltframework' }}
@@ -55,4 +48,4 @@ jobs:
           --secret_key=${{ secrets.AWS_SECRET_KEY }}
           --acl-public
           --stop-on-error
-          put "Shotcut User Guide.pdf" s3://misc.meltymedia/shotcut/stockmedia/
+          put *.pdf s3://misc.meltymedia/shotcut/stockmedia/
