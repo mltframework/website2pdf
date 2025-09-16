@@ -45,3 +45,14 @@ jobs:
         name: PDF
         path: Shotcut User Guide.pdf
         retention-days: 30
+
+    - name: Upload PDF to S3
+      if: ${{ github.repository_owner == 'mltframework' }}
+      uses: mltframework/s3cmd-action@v0
+      with:
+        args: >-
+          --access_key=${{ secrets.AWS_ACCESS_KEY }}
+          --secret_key=${{ secrets.AWS_SECRET_KEY }}
+          --acl-public
+          --stop-on-error
+          put "Shotcut User Guide.pdf" s3://misc.meltymedia/shotcut/stockmedia/
